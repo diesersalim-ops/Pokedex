@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pokedex</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+  <link rel="stylesheet" href="style.css">
+  <script defer src="scripts/db.js"></script>
+  <script defer src="scripts/template.js"></script>
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <header class="header">
+    <div class="header__brand">
+      <img class="header__logo" src="assets/icons/pokeball.svg" alt="" width="40" height="40">
+      <h1 class="header__title">Pokedex</h1>
+    </div>
+    <div class="header__search" role="search">
+      <input class="header__input" type="search" data-id="search-input" aria-label="Search Pokémon by name" placeholder="Search Pokémon" autocomplete="off">
+      <button class="header__button" type="button" data-id="search-button" data-action="search" aria-label="Start search">Search</button>
+    </div>
+  </header>
+
+  <main class="content" data-id="content">
+    <ul class="content__list" data-id="pokemon-list" aria-label="Pokémon list"></ul>
+    <button class="content__more" type="button" data-id="load-more-button" data-action="load-more" aria-label="Load more Pokémon">Load more</button>
+  </main>
+
+  <dialog class="dialog" data-id="dialog" aria-label="Pokémon details"></dialog>
+
+  <footer class="footer">
+    <p class="footer__text">Pokedex · Pokémon data from PokéAPI</p>
+  </footer>
+</body>
+</html>
