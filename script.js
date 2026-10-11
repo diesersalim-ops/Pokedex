@@ -195,3 +195,236 @@ async function searchPokemon() {
     await runSearch(term);
   }
 }
+
+async function runSearch(term) {
+  if (DB.isLoading) {
+    return;
+  }
+  startLoading();
+  try {
+    await loadAllPokemon();
+    showResults(findMatches(term));
+  } catch (error) {
+    showError('Search failed. Please try again.');
+  } finally {
+    stopLoading();
+  }
+}
+
+async function loadAllPokemon() {
+  if (DB.allPokemon.length === 0) {
+    DB.allPokemon = objectToList(await fetchJson(`${DB.databaseUrl}/pokemon.json`));
+  }
+}
+
+function findMatches(term) {
+  return DB.allPokemon.filter((pokemon) => pokemon.name.includes(term));
+}
+
+function showResults(results) {
+  DB.searchResults = results;
+  DB.isSearchActive = true;
+  getElement('pokemon-list').innerHTML = '';
+  renderCards(results, 0);
+  if (results.length === 0) {
+    getElement('pokemon-list').insertAdjacentHTML('afterend', Template.notFound());
+  }
+}
+
+function resetSearch() {
+  if (!DB.isSearchActive) {
+    return;
+  }
+  DB.isSearchActive = false;
+  getElement('pokemon-list').innerHTML = '';
+  renderCards(DB.pokemonList, 0);
+  getElement('load-more-button').hidden = shouldHideLoadMore();
+}
+
+function getCurrentList() {
+  if (DB.isSearchActive) {
+    return DB.searchResults;
+  }
+  return DB.pokemonList;
+}
+
+function getCurrentPokemon() {
+  return getCurrentList()[DB.currentIndex];
+}
+
+function openDialog(button) {
+  DB.currentIndex = Number(button.dataset.index);
+  DB.currentTab = 'about';
+  renderDialog();
+  getElement('dialog').showModal();
+}
+
+function closeDialog() {
+  getElement('dialog').close();
+}
+
+function showPrevious(button) {
+  showNeighbor(-1, button);
+}
+
+function showNext(button) {
+  showNeighbor(1, button);
+}
+
+function showNeighbor(step, button) {
+  const lastIndex = getCurrentList().length - 1;
+  DB.currentIndex += step;
+  if (DB.currentIndex < 0) {
+    DB.currentIndex = lastIndex;
+  } else if (DB.currentIndex > lastIndex) {
+    DB.currentIndex = 0;
+  }
+  renderDialog();
+  getElement(button.dataset.id).focus();
+}
+
+function showTab(button) {
+  DB.currentTab = button.dataset.tab;
+  const buttons = document.querySelectorAll('.pokemon-dialog__tab');
+  for (let i = 0; i < buttons.length; i++) {
+    buttons[i].setAttribute('aria-pressed', buttons[i] === button);
+  }
+  updatePanel();
+}
+
+function renderDialog() {
+  const pokemon = getCurrentPokemon();
+  getElement('dialog').innerHTML = Template.dialog(buildDialogView(pokemon));
+  updateEvolution(pokemon);
+}
+
+function buildDialogView(pokemon) {
+  return {
+    type: escapeHtml(pokemon.types[0]),
+    idLabel: `#${pokemon.id}`,
+    name: formatName(pokemon.name),
+    image: escapeHtml(pokemon.image),
+    typeIcons: buildTypeIcons(pokemon.types),
+    tabButtons: buildTabButtons(),
+    panel: buildPanel(pokemon)
+  };
+}
+
+function buildTabButtons() {
+  let html = '';
+  for (let i = 0; i < tabs.length; i++) {
+    html += Template.tabButton(tabs[i][0], tabs[i][1], tabs[i][0] === DB.currentTab);
+  }
+  return html;
+}
+
+function buildPanel(pokemon) {
+  return panelBuilders[DB.currentTab](pokemon);
+}
+
+function updatePanel() {
+  const pokemon = getCurrentPokemon();
+  getElement('dialog-panel').innerHTML = buildPanel(pokemon);
+  updateEvolution(pokemon);
+}
+
+function buildAboutPanel(pokemon) {
+  return Template.aboutPanel({
+    height: `${pokemon.height * 10} cm`,
+    weight: `${pokemon.weight / 10} kg`,
+    baseExperience: pokemon.base_experience,
+    abilities: buildAbilities(pokemon.abilities)
+  });
+}
+
+function buildAbilities(abilities) {
+  const names = [];
+  for (let i = 0; i < abilities.length; i++) {
+    names.push(formatName(abilities[i]));
+  }
+  return names.join(', ');
+}
+
+function buildStatsPanel(pokemon) {
+  let rows = '';
+  let total = 0;
+  for (let i = 0; i < statOrder.length; i++) {
+    const value = pokemon.stats[statOrder[i][0]];
+    total += value;
+    rows += Template.statRow({ label: statOrder[i][1], value: value });
+  }
+  return Template.statsPanel(rows, total);
+}
+
+function buildEvolutionPanel(pokemon) {
+  const chain = DB.evolutionCache[pokemon.id];
+  if (chain === undefined) {
+    return Template.message('Loading evolution…');
+  }
+  let steps = '';
+  for (let i = 0; i < chain.length; i++) {
+    steps += Template.evolutionStep(chain[i]);
+  }
+  return Template.evolutionPanel(steps);
+}
+
+async function updateEvolution(pokemon) {
+  if (needsEvolutionLoad(pokemon)) {
+    await loadEvolution(pokemon);
+  }
+}
+
+function needsEvolutionLoad(pokemon) {
+  if (DB.currentTab !== 'evolution') {
+    return false;
+  }
+  return DB.evolutionCache[pokemon.id] === undefined;
+}
+
+async function loadEvolution(pokemon) {
+  try {
+    DB.evolutionCache[pokemon.id] = await fetchEvolution(pokemon.id);
+    showEvolution(pokemon);
+  } catch (error) {
+    showPanelMessage(pokemon, 'Evolution could not be loaded.');
+  }
+}
+
+function showEvolution(pokemon) {
+  if (isShowingEvolution(pokemon)) {
+    getElement('dialog-panel').innerHTML = buildEvolutionPanel(pokemon);
+  }
+}
+
+function isShowingEvolution(pokemon) {
+  return DB.currentTab === 'evolution' && getCurrentPokemon() === pokemon;
+}
+
+function showPanelMessage(pokemon, text) {
+  if (isShowingEvolution(pokemon)) {
+    getElement('dialog-panel').innerHTML = Template.message(text);
+  }
+}
+
+async function fetchEvolution(id) {
+  const species = await fetchJson(`${DB.pokeApiUrl}/pokemon-species/${id}`);
+  const chain = await fetchJson(species.evolution_chain.url);
+  return flattenChain(chain.chain, []);
+}
+
+function getIdFromUrl(url) {
+  const parts = url.split('/');
+  return parts[parts.length - 2];
+}
+
+function flattenChain(node, steps) {
+  const id = getIdFromUrl(node.species.url);
+  const image = `${DB.imageUrl}/${id}.png`;
+  steps.push({ name: formatName(node.species.name), image: image });
+  for (let i = 0; i < node.evolves_to.length; i++) {
+    flattenChain(node.evolves_to[i], steps);
+  }
+  return steps;
+}
+
+init();
